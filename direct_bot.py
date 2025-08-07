@@ -452,10 +452,27 @@ def main():
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook", 
                  json={"drop_pending_updates": True})
     
+    # Set bot commands
+    commands = [
+        {"command": "start", "description": "🎉 Welcome & get started"},
+        {"command": "search", "description": "🔍 Search for songs by name"},
+        {"command": "single", "description": "🎵 Download single tracks"},
+        {"command": "playlist", "description": "🎶 Download YouTube playlists"},
+        {"command": "help", "description": "📚 How to use the bot"},
+        {"command": "status", "description": "🤖 Check bot status"},
+        {"command": "stop", "description": "⏹️ Cancel current download"},
+        {"command": "clean", "description": "🧹 Clean temporary files"},
+        {"command": "exit", "description": "🚪 Exit current mode"}
+    ]
+    
+    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands", 
+                 json={"commands": commands})
+    
     print("🤖 Direct bot starting...")
     print("✅ Send music links to your bot!")
     print("🧹 Auto-cleanup every 30 minutes enabled")
     print("💓 Keep alive server started")
+    print("⚡ Bot commands set successfully")
     
     # Start keep alive server
     keep_alive()
@@ -476,7 +493,7 @@ def main():
                     text = message.get("text", "")
                     
                     if text == "/start":
-                        send_message(chat_id, "Hey there! 👋🎉 I'm your music buddy! 🎵✨\n\n🤖 Commands:\n/search - Search for songs\n/single - Download single track\n/playlist - Download playlist\n/help - Get help\n/status - Bot status\n/stop - Cancel download\n/clean - Clean temp files\n/exit - Exit current mode\n\n🎆 Or just send links/song names directly!")
+                        send_message(chat_id, "Hey there! 👋🎉 I'm your music buddy! 🎵✨\n\n🤖 Commands:\n/search - 🔍 Search for songs\n/single - 🎵 Download single track\n/playlist - 🎶 Download playlist\n/help - 📚 Get help\n/status - 🤖 Bot status\n/stop - ⏹️ Cancel download\n/clean - 🧹 Clean temp files\n/exit - 🚪 Exit current mode\n\n🎆 Or just send links/song names directly!")
                     elif text == "/search":
                         send_message(chat_id, "🔍 Search Mode Active!\n\nJust type the song name:\nExample: \"Blinding Lights The Weeknd\" 🎵✨\n\nUse /exit to leave this mode")
                         user_processes[chat_id] = "search_mode"
