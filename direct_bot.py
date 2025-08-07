@@ -476,9 +476,9 @@ def main():
                     text = message.get("text", "")
                     
                     if text == "/start":
-                        send_message(chat_id, "Hey there! 👋🎉 I'm your music buddy! 🎵✨\n\n🤖 Commands:\n/search - Search for songs\n/single - Download single track\n/playlist - Download playlist\n/help - Get help\n/status - Bot status\n/stop - Cancel download\n/clean - Clean temp files\n\n🎆 Or just send links/song names directly!")
+                        send_message(chat_id, "Hey there! 👋🎉 I'm your music buddy! 🎵✨\n\n🤖 Commands:\n/search - Search for songs\n/single - Download single track\n/playlist - Download playlist\n/help - Get help\n/status - Bot status\n/stop - Cancel download\n/clean - Clean temp files\n/exit - Exit current mode\n\n🎆 Or just send links/song names directly!")
                     elif text == "/search":
-                        send_message(chat_id, "🔍 Search Mode Active!\n\nJust type the song name after this:\nExample: \"Blinding Lights The Weeknd\" 🎵✨")
+                        send_message(chat_id, "🔍 Search Mode Active!\n\nJust type the song name:\nExample: \"Blinding Lights The Weeknd\" 🎵✨\n\nUse /exit to leave this mode")
                         user_processes[chat_id] = "search_mode"
                     elif text == "/single":
                         send_message(chat_id, "🎵 Single Track Mode!\n\nSend me:\n🎥 YouTube link\n🎶 Spotify link\n🍎 Apple Music link\n\nI'll download it for you! 🚀✨")
@@ -487,13 +487,20 @@ def main():
                         send_message(chat_id, "🎶 Playlist Mode!\n\nSend me a YouTube playlist link and I'll download all songs one by one! 🔥✨\n\n⚠️ Note: Only YouTube playlists supported")
                         user_processes[chat_id] = "playlist_mode"
                     elif text == "/help":
-                        send_message(chat_id, "🎆 How to use me:\n\n🔍 /search - Search songs by name\n🎵 /single - Download single tracks\n🎶 /playlist - Download YouTube playlists\n⏹️ /stop - Cancel downloads\n🤖 /status - Check bot status\n\n🎉 You can also send links/names directly!")
+                        send_message(chat_id, "🎆 How to use me:\n\n🔍 /search - Search songs by name\n🎵 /single - Download single tracks\n🎶 /playlist - Download YouTube playlists\n⏹️ /stop - Cancel downloads\n🤖 /status - Check bot status\n🚪 /exit - Exit current mode\n\n🎉 You can also send links/names directly!")
                     elif text == "/status":
                         active_downloads = len([p for p in user_processes.values() if p and p != "search_mode" and p != "single_mode" and p != "playlist_mode"])
                         send_message(chat_id, f"🤖 Bot Status:\n\n✅ Online and ready!\n📥 Active downloads: {active_downloads}\n🧹 Auto-cleanup: Every 30 mins\n🚀 Server: Running smooth!")
                     elif text == "/clean":
                         cleanup_files()
                         send_message(chat_id, "Cleaned up temp files! 🧹✨")
+                    elif text == "/exit":
+                        if chat_id in user_processes and user_processes[chat_id] in ["search_mode", "single_mode", "playlist_mode"]:
+                            mode = user_processes[chat_id].replace("_mode", "")
+                            user_processes[chat_id] = False
+                            send_message(chat_id, f"Exited {mode} mode! 😌 Back to normal mode 🎆")
+                        else:
+                            send_message(chat_id, "You're not in any special mode! 😊")
                     elif text == "/stop":
                         if chat_id in user_processes:
                             if user_processes[chat_id] in ["search_mode", "single_mode", "playlist_mode"]:
