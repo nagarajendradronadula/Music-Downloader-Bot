@@ -5,6 +5,8 @@ import yt_dlp
 import requests
 import time
 import threading
+from flask import Flask
+from threading import Thread
 
 BOT_TOKEN = "8281137886:AAFBcWfTYmTM39g9OucuAKSiggOxqwS3MCQ"
 last_update_id = 0
@@ -30,6 +32,21 @@ def start_cleanup_timer():
     """Start cleanup timer that runs every 30 minutes"""
     cleanup_files()  # Clean on start
     threading.Timer(1800.0, start_cleanup_timer).start()  # 1800 seconds = 30 minutes
+
+# Keep alive function for free hosting
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "🎵 Music Bot is alive! 🎶"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.daemon = True
+    t.start()
 
 def is_playlist(url):
     """Check if URL is a playlist"""
@@ -438,6 +455,10 @@ def main():
     print("🤖 Direct bot starting...")
     print("✅ Send music links to your bot!")
     print("🧹 Auto-cleanup every 30 minutes enabled")
+    print("💓 Keep alive server started")
+    
+    # Start keep alive server
+    keep_alive()
     
     # Start cleanup timer
     start_cleanup_timer()
