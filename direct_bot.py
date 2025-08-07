@@ -4,10 +4,32 @@ import glob
 import yt_dlp
 import requests
 import time
+import threading
 
 BOT_TOKEN = "8281137886:AAFBcWfTYmTM39g9OucuAKSiggOxqwS3MCQ"
 last_update_id = 0
 user_processes = {}  # Track ongoing processes per user
+
+def cleanup_files():
+    """Delete all downloaded files"""
+    try:
+        files_deleted = 0
+        for pattern in ["*.mp3", "*.m4a", "*.webm", "*.wav", "*.opus"]:
+            for f in glob.glob(pattern):
+                try:
+                    os.remove(f)
+                    files_deleted += 1
+                except:
+                    pass
+        if files_deleted > 0:
+            print(f"🧹 Cleaned up {files_deleted} files")
+    except Exception as e:
+        print(f"Cleanup error: {e}")
+
+def start_cleanup_timer():
+    """Start cleanup timer that runs every 30 minutes"""
+    cleanup_files()  # Clean on start
+    threading.Timer(1800.0, start_cleanup_timer).start()  # 1800 seconds = 30 minutes
 
 def is_playlist(url):
     """Check if URL is a playlist"""
@@ -415,6 +437,10 @@ def main():
     
     print("🤖 Direct bot starting...")
     print("✅ Send music links to your bot!")
+    print("🧹 Auto-cleanup every 30 minutes enabled")
+    
+    # Start cleanup timer
+    start_cleanup_timer()
     
     while True:
         try:
