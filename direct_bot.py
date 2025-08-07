@@ -455,22 +455,49 @@ def main():
                     text = message.get("text", "")
                     
                     if text == "/start":
-                        send_message(chat_id, "Hey there! 👋🎉 I'm your music buddy! 🎵✨\n\nJust send me:\n🎥 YouTube links\n🎶 Spotify links\n🍎 Apple Music links\n🌈 Or just tell me a song name!\n\n🎆 Try: \"Blinding Lights The Weeknd\"\n\n🤖 Commands:\n/start - Show this message\n/help - Get help\n/stop - Cancel download\n/status - Bot status\n/clean - Clean temp files")
+                        send_message(chat_id, "Hey there! 👋🎉 I'm your music buddy! 🎵✨\n\n🤖 Commands:\n/search - Search for songs\n/single - Download single track\n/playlist - Download playlist\n/help - Get help\n/status - Bot status\n/stop - Cancel download\n/clean - Clean temp files\n\n🎆 Or just send links/song names directly!")
+                    elif text == "/search":
+                        send_message(chat_id, "🔍 Search Mode Active!\n\nJust type the song name after this:\nExample: \"Blinding Lights The Weeknd\" 🎵✨")
+                        user_processes[chat_id] = "search_mode"
+                    elif text == "/single":
+                        send_message(chat_id, "🎵 Single Track Mode!\n\nSend me:\n🎥 YouTube link\n🎶 Spotify link\n🍎 Apple Music link\n\nI'll download it for you! 🚀✨")
+                        user_processes[chat_id] = "single_mode"
+                    elif text == "/playlist":
+                        send_message(chat_id, "🎶 Playlist Mode!\n\nSend me a YouTube playlist link and I'll download all songs one by one! 🔥✨\n\n⚠️ Note: Only YouTube playlists supported")
+                        user_processes[chat_id] = "playlist_mode"
                     elif text == "/help":
-                        send_message(chat_id, "🎆 How to use me:\n\n🎵 Send YouTube/Spotify/Apple Music links\n🔍 Search by typing song names\n⏹️ Use /stop to cancel downloads\n🧹 Files auto-delete every 30 mins\n\n🎉 Examples:\n- https://youtu.be/abc123\n- \"Bohemian Rhapsody Queen\"\n- Spotify track links")
+                        send_message(chat_id, "🎆 How to use me:\n\n🔍 /search - Search songs by name\n🎵 /single - Download single tracks\n🎶 /playlist - Download YouTube playlists\n⏹️ /stop - Cancel downloads\n🤖 /status - Check bot status\n\n🎉 You can also send links/names directly!")
                     elif text == "/status":
-                        active_downloads = len([p for p in user_processes.values() if p])
+                        active_downloads = len([p for p in user_processes.values() if p and p != "search_mode" and p != "single_mode" and p != "playlist_mode"])
                         send_message(chat_id, f"🤖 Bot Status:\n\n✅ Online and ready!\n📥 Active downloads: {active_downloads}\n🧹 Auto-cleanup: Every 30 mins\n🚀 Server: Running smooth!")
                     elif text == "/clean":
                         cleanup_files()
                         send_message(chat_id, "Cleaned up temp files! 🧹✨")
                     elif text == "/stop":
-                        if chat_id in user_processes and user_processes[chat_id]:
-                            user_processes[chat_id] = False
-                            send_message(chat_id, "Download stopped! ⏹️😌✨")
+                        if chat_id in user_processes:
+                            if user_processes[chat_id] in ["search_mode", "single_mode", "playlist_mode"]:
+                                user_processes[chat_id] = False
+                                send_message(chat_id, "Mode cancelled! ⏹️😌 Back to normal mode")
+                            elif user_processes[chat_id]:
+                                user_processes[chat_id] = False
+                                send_message(chat_id, "Download stopped! ⏹️😌✨")
+                            else:
+                                send_message(chat_id, "Nothing to stop! 😊🤷♂️")
                         else:
-                            send_message(chat_id, "No download running! 😊🤷♂️")
+                            send_message(chat_id, "Nothing to stop! 😊🤷♂️")
                     elif text.startswith("http"):
+                        # Check if user is in a specific mode
+                        current_mode = user_processes.get(chat_id, None)
+                        
+                        if current_mode == "single_mode":
+                            if is_playlist(text):
+                                send_message(chat_id, "That's a playlist! 🎶 Use /playlist mode or send a single track link 🎵")
+                                return
+                        elif current_mode == "playlist_mode":
+                            if not is_playlist(text):
+                                send_message(chat_id, "That's a single track! 🎵 Use /single mode or send a playlist link 🎶")
+                                return
+                        
                         user_processes[chat_id] = True  # Start process
                         
                         if is_playlist(text):
@@ -501,8 +528,19 @@ def main():
                         
                         user_processes[chat_id] = False  # End process
                     else:
-                        # Treat as song name search
+                        # Check if user is in search mode or treat as song search
+                        current_mode = user_processes.get(chat_id, None)
+                        
+                        if current_mode in ["single_mode", "playlist_mode"]:
+                            if current_mode == "single_mode":
+                                send_message(chat_id, "You're in single track mode! 🎵 Send a link or use /search for song names")
+                            else:
+                                send_message(chat_id, "You're in playlist mode! 🎶 Send a playlist link or use /search for song names")
+                            return
+                        
                         if len(text.strip()) > 3:
+                            if current_mode == "search_mode":
+                                send_message(chat_id, f"Perfect! Searching for '{text}'... 🔍🎆✨")
                             user_processes[chat_id] = True  # Start process
                             send_message(chat_id, f"Searching for '{text}'... 🔍🎆✨")
                             
