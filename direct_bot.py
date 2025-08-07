@@ -527,8 +527,8 @@ def main():
                                 send_message(chat_id, "Hmm, couldn't find that song! 😕🤔 Try a different link? 🎆🎵")
                         
                         user_processes[chat_id] = False  # End process
-                    else:
-                        # Check if user is in search mode or treat as song search
+                    elif not text.startswith('/'):
+                        # Only treat as song search if not a command
                         current_mode = user_processes.get(chat_id, None)
                         
                         if current_mode in ["single_mode", "playlist_mode"]:
@@ -583,6 +583,8 @@ def main():
                             user_processes[chat_id] = False  # End process
                         else:
                             send_message(chat_id, "Send me a link or song name! 🎵😊 (at least 3 letters) 😉✨")
+                    else:
+                        send_message(chat_id, "Unknown command! 🤔 Use /help to see available commands 😊")
             
             time.sleep(1)
             
