@@ -455,9 +455,17 @@ def main():
                     text = message.get("text", "")
                     
                     if text == "/start":
-                        send_message(chat_id, "Hey there! 👋🎉 I'm your music buddy! 🎵✨\n\nJust send me:\n🎥 YouTube links\n🎶 Spotify links\n🍎 Apple Music links\n🌈 Or just tell me a song name!\n\n🎆 Try: \"Blinding Lights The Weeknd\"\n\n⏹️ Send /stop to cancel downloads!")
+                        send_message(chat_id, "Hey there! 👋🎉 I'm your music buddy! 🎵✨\n\nJust send me:\n🎥 YouTube links\n🎶 Spotify links\n🍎 Apple Music links\n🌈 Or just tell me a song name!\n\n🎆 Try: \"Blinding Lights The Weeknd\"\n\n🤖 Commands:\n/start - Show this message\n/help - Get help\n/stop - Cancel download\n/status - Bot status\n/clean - Clean temp files")
+                    elif text == "/help":
+                        send_message(chat_id, "🎆 How to use me:\n\n🎵 Send YouTube/Spotify/Apple Music links\n🔍 Search by typing song names\n⏹️ Use /stop to cancel downloads\n🧹 Files auto-delete every 30 mins\n\n🎉 Examples:\n- https://youtu.be/abc123\n- \"Bohemian Rhapsody Queen\"\n- Spotify track links")
+                    elif text == "/status":
+                        active_downloads = len([p for p in user_processes.values() if p])
+                        send_message(chat_id, f"🤖 Bot Status:\n\n✅ Online and ready!\n📥 Active downloads: {active_downloads}\n🧹 Auto-cleanup: Every 30 mins\n🚀 Server: Running smooth!")
+                    elif text == "/clean":
+                        cleanup_files()
+                        send_message(chat_id, "Cleaned up temp files! 🧹✨")
                     elif text == "/stop":
-                        if chat_id in user_processes:
+                        if chat_id in user_processes and user_processes[chat_id]:
                             user_processes[chat_id] = False
                             send_message(chat_id, "Download stopped! ⏹️😌✨")
                         else:
