@@ -3,3 +3,4 @@ yt-dlp
 requests
 spotipy
 Flask
+python-dotenv

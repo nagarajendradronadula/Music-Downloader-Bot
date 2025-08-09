@@ -7,8 +7,12 @@ import time
 import threading
 from flask import Flask
 from threading import Thread
+from dotenv import load_dotenv
 
-BOT_TOKEN = "8281137886:AAFBcWfTYmTM39g9OucuAKSiggOxqwS3MCQ"
+# Load environment variables
+load_dotenv()
+
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8281137886:AAHC05kde47MV41si38v7tA9HT_363mrRdw')
 last_update_id = 0
 user_processes = {}  # Track ongoing processes per user
 
