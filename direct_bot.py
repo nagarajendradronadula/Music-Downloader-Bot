@@ -126,8 +126,6 @@ def get_track_title_from_url(url):
                 pass
             
             # Fallback: get from page title
-            if not validate_url(url):
-                return None
             response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             title_match = re.search(r'<title>([^<]+)</title>', response.text)
             if title_match:
@@ -279,8 +277,6 @@ def get_spotify_apple_tracks(url):
         try:
             # Try to extract basic info
             import re
-            if not validate_url(url):
-                return []
             response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
             title_match = re.search(r'<title>([^<]+)</title>', response.text)
             if title_match:
@@ -628,7 +624,7 @@ def main():
                                 send_message(chat_id, "You're in single track mode! 🎵 Send a link or use /search for song names")
                             else:
                                 send_message(chat_id, "You're in playlist mode! 🎶 Send a playlist link or use /search for song names")
-                            continue
+                            return
                         
                         if len(text.strip()) > 3:
                             if current_mode == "search_mode":
