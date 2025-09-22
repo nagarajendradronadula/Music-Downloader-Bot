@@ -8,11 +8,35 @@ import threading
 from flask import Flask
 from threading import Thread
 from dotenv import load_dotenv
+from urllib.parse import urlparse
+import re
 
 # Load environment variables
 load_dotenv()
 
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8281137886:AAHC05kde47MV41si38v7tA9HT_363mrRdw')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is required")
+
+# Allowed domains for URL validation
+ALLOWED_DOMAINS = {
+    'youtube.com', 'www.youtube.com', 'youtu.be', 'm.youtube.com',
+    'spotify.com', 'open.spotify.com', 'music.apple.com'
+}
+
+def validate_url(url):
+    """Validate URL to prevent SSRF attacks"""
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme in ['http', 'https']:
+            return False
+        if not parsed.netloc:
+            return False
+        # Check against allowed domains
+        domain = parsed.netloc.lower()
+        return any(domain == allowed or domain.endswith('.' + allowed) for allowed in ALLOWED_DOMAINS)
+    except Exception:
+        return False
 last_update_id = 0
 user_processes = {}  # Track ongoing processes per user
 
@@ -34,8 +58,13 @@ def cleanup_files():
 
 def start_cleanup_timer():
     """Start cleanup timer that runs every 30 minutes"""
-    cleanup_files()  # Clean on start
-    threading.Timer(1800.0, start_cleanup_timer).start()  # 1800 seconds = 30 minutes
+    def cleanup_loop():
+        while True:
+            cleanup_files()
+            time.sleep(1800)  # 30 minutes
+    
+    cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
+    cleanup_thread.start()
 
 # Keep alive function for free hosting
 app = Flask('')
@@ -45,7 +74,7 @@ def home():
     return "🎵 Music Bot is alive! 🎶"
 
 def run():
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='127.0.0.1', port=8080)
 
 def keep_alive():
     t = Thread(target=run)
@@ -97,6 +126,8 @@ def get_track_title_from_url(url):
                 pass
             
             # Fallback: get from page title
+            if not validate_url(url):
+                return None
             response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             title_match = re.search(r'<title>([^<]+)</title>', response.text)
             if title_match:
@@ -121,7 +152,12 @@ def download_music(url):
     """Download single track - supports YouTube, Spotify, Apple Music"""
     try:
         for f in glob.glob("*.mp3") + glob.glob("*.m4a") + glob.glob("*.webm"):
-            os.remove(f)
+            try:
+                # Validate file path to prevent path traversal
+                if os.path.basename(f) == f and not f.startswith('..'):
+                    os.remove(f)
+            except (OSError, PermissionError) as e:
+                print(f"Could not remove {f}: {e}")
         
         download_url = url
         
@@ -243,6 +279,8 @@ def get_spotify_apple_tracks(url):
         try:
             # Try to extract basic info
             import re
+            if not validate_url(url):
+                return []
             response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
             title_match = re.search(r'<title>([^<]+)</title>', response.text)
             if title_match:
@@ -535,17 +573,22 @@ def main():
                         else:
                             send_message(chat_id, "Nothing to stop! 😊🤷♂️")
                     elif text.startswith("http"):
+                        # Validate URL first
+                        if not validate_url(text):
+                            send_message(chat_id, "Invalid URL! Only YouTube, Spotify, and Apple Music links are allowed 🚫")
+                            continue
+                        
                         # Check if user is in a specific mode
                         current_mode = user_processes.get(chat_id, None)
                         
                         if current_mode == "single_mode":
                             if is_playlist(text):
                                 send_message(chat_id, "That's a playlist! 🎶 Use /playlist mode or send a single track link 🎵")
-                                return
+                                continue
                         elif current_mode == "playlist_mode":
                             if not is_playlist(text):
                                 send_message(chat_id, "That's a single track! 🎵 Use /single mode or send a playlist link 🎶")
-                                return
+                                continue
                         
                         user_processes[chat_id] = True  # Start process
                         
@@ -585,7 +628,7 @@ def main():
                                 send_message(chat_id, "You're in single track mode! 🎵 Send a link or use /search for song names")
                             else:
                                 send_message(chat_id, "You're in playlist mode! 🎶 Send a playlist link or use /search for song names")
-                            return
+                            continue
                         
                         if len(text.strip()) > 3:
                             if current_mode == "search_mode":
@@ -593,9 +636,13 @@ def main():
                             user_processes[chat_id] = True  # Start process
                             send_message(chat_id, f"Searching for '{text}'... 🔍🎆✨")
                             
-                            # Clear previous files
+                            # Clear previous files safely
                             for f in glob.glob("*.mp3") + glob.glob("*.m4a") + glob.glob("*.webm"):
-                                os.remove(f)
+                                try:
+                                    if os.path.basename(f) == f and not f.startswith('..'):
+                                        os.remove(f)
+                                except (OSError, PermissionError):
+                                    pass
                             
                             # Search YouTube for the song
                             youtube_search = f"ytsearch1:{text}"
@@ -622,7 +669,11 @@ def main():
                                     else:
                                         send_message(chat_id, "Hmm, couldn't send that. Try again? 🤷‍♂️")
                                     
-                                    os.remove(file_path)
+                                    try:
+                                        if os.path.basename(file_path) == file_path and not file_path.startswith('..'):
+                                            os.remove(file_path)
+                                    except (OSError, PermissionError):
+                                        pass
                                 else:
                                     send_message(chat_id, "Couldn't find that song! 🤔😬 Try being more specific? 🎆🎵")
                                     
