@@ -6,6 +6,8 @@ import requests
 import time
 import threading
 from dotenv import load_dotenv
+from urllib.parse import urlparse
+import re
 
 # Load environment variables
 load_dotenv()
@@ -32,8 +34,13 @@ def cleanup_files():
 
 def start_cleanup_timer():
     """Start cleanup timer that runs every 30 minutes"""
-    cleanup_files()  # Clean on start
-    threading.Timer(1800.0, start_cleanup_timer).start()  # 1800 seconds = 30 minutes
+    def cleanup_loop():
+        while True:
+            cleanup_files()
+            time.sleep(1800)  # 30 minutes
+    
+    cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
+    cleanup_thread.start()
 
 
 
@@ -106,7 +113,12 @@ def download_music(url):
     """Download single track - supports YouTube, Spotify, Apple Music"""
     try:
         for f in glob.glob("*.mp3") + glob.glob("*.m4a") + glob.glob("*.webm"):
-            os.remove(f)
+            try:
+                # Validate file path to prevent path traversal
+                if os.path.basename(f) == f and not f.startswith('..'):
+                    os.remove(f)
+            except (OSError, PermissionError) as e:
+                print(f"Could not remove {f}: {e}")
         
         download_url = url
         
@@ -558,9 +570,11 @@ def main():
                             if is_playlist(text):
                                 send_message(chat_id, "That's a playlist! 🎶 Use /playlist mode or send a single track link 🎵")
                                 continue
+                                continue
                         elif current_mode == "playlist_mode":
                             if not is_playlist(text):
                                 send_message(chat_id, "That's a single track! 🎵 Use /single mode or send a playlist link 🎶")
+                                continue
                                 continue
                         
                         user_processes[chat_id] = True  # Start process
@@ -662,7 +676,11 @@ def main():
                                     else:
                                         send_message(chat_id, "Hmm, couldn't send that. Try again? 🤷‍♂️")
                                     
-                                    os.remove(file_path)
+                                    try:
+                                        if os.path.basename(file_path) == file_path and not file_path.startswith('..'):
+                                            os.remove(file_path)
+                                    except (OSError, PermissionError):
+                                        pass
                                 else:
                                     send_message(chat_id, "Couldn't find that song! 🤔😬 Try being more specific? 🎆🎵")
                                     
