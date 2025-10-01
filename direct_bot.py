@@ -5,14 +5,12 @@ import yt_dlp
 import requests
 import time
 import threading
-from flask import Flask
-from threading import Thread
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8281137886:AAHC05kde47MV41si38v7tA9HT_363mrRdw')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 last_update_id = 0
 user_processes = {}  # Track ongoing processes per user
 
@@ -37,20 +35,7 @@ def start_cleanup_timer():
     cleanup_files()  # Clean on start
     threading.Timer(1800.0, start_cleanup_timer).start()  # 1800 seconds = 30 minutes
 
-# Keep alive function for free hosting
-app = Flask('')
 
-@app.route('/')
-def home():
-    return "🎵 Music Bot is alive! 🎶"
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.daemon = True
-    t.start()
 
 def is_playlist(url):
     """Check if URL is a playlist"""
@@ -134,16 +119,27 @@ def download_music(url):
                 return None
         
         ydl_opts = {
-            'format': 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',
+            'format': 'bestaudio[ext=m4a]/bestaudio',
             'outtmpl': '%(title)s.%(ext)s',
             'quiet': True,
             'noplaylist': True,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '128',
+            }],
+            'concurrent_fragment_downloads': 4,
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([download_url])
         
-        audio_files = glob.glob("*.mp3") + glob.glob("*.m4a") + glob.glob("*.webm")
+        # Look for MP3 files first, then fallback
+        mp3_files = glob.glob("*.mp3")
+        if mp3_files:
+            return mp3_files[0]
+        
+        audio_files = glob.glob("*.m4a") + glob.glob("*.webm") + glob.glob("*.mp4")
         return audio_files[0] if audio_files else None
     except Exception as e:
         print(f"Download error: {e}")
@@ -257,9 +253,11 @@ def get_spotify_apple_tracks(url):
 def download_and_send_playlist(url, chat_id):
     """Human-like approach: get track names, search YouTube, download & send"""
     try:
-        # Only handle YouTube playlists
+        # Handle Spotify/Apple Music playlists
         if 'spotify.com' in url or 'music.apple.com' in url:
-            return False  # Already handled above
+            track_names = get_spotify_apple_tracks(url)
+            if not track_names:
+                return False
             
             send_message(chat_id, f"🎵 Found {len(track_names)} tracks. Searching YouTube and sending...")
             
@@ -344,8 +342,8 @@ def download_and_send_playlist(url, chat_id):
             send_message(chat_id, f"🎉 Done! {sent_count}/{len(track_names)} tracks sent.")
             return True
         
+        # Handle YouTube playlists
         else:
-            # YouTube playlist - use original method
             ydl_opts_info = {'quiet': True, 'extract_flat': True}
             
             with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
@@ -419,19 +417,29 @@ def download_and_send_playlist(url, chat_id):
 
 def send_message(chat_id, text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text})
+    try:
+        response = requests.post(url, json={"chat_id": chat_id, "text": text}, timeout=10)
+        print(f"Message sent to {chat_id}: {response.status_code}")
+        if response.status_code != 200:
+            print(f"Send error: {response.text}")
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Send message error: {e}")
+        return False
 
 def send_document(chat_id, file_path):
     """Send individual music file"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
     
     try:
+        print(f"📤 Sending: {os.path.basename(file_path)}")
         with open(file_path, 'rb') as f:
             files = {'document': f}
             data = {'chat_id': chat_id}
-            response = requests.post(url, files=files, data=data, timeout=120)
+            response = requests.post(url, files=files, data=data, timeout=60)
         return response.status_code == 200
-    except:
+    except Exception as e:
+        print(f"❌ Send failed: {e}")
         return False
 
 def get_updates():
@@ -444,9 +452,14 @@ def get_updates():
         data = response.json()
         
         if data.get("ok"):
-            return data.get("result", [])
-    except:
-        pass
+            updates = data.get("result", [])
+            if updates:
+                print(f"Received {len(updates)} updates")
+            return updates
+        else:
+            print(f"API error: {data}")
+    except Exception as e:
+        print(f"Get updates error: {e}")
     return []
 
 def main():
@@ -472,14 +485,13 @@ def main():
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands", 
                  json={"commands": commands})
     
-    print("🤖 Direct bot starting...")
-    print("✅ Send music links to your bot!")
+    print("🤖 Music Downloader Bot starting...")
+    print(f"✅ Bot token: {BOT_TOKEN[:10]}...")
     print("🧹 Auto-cleanup every 30 minutes enabled")
-    print("💓 Keep alive server started")
     print("⚡ Bot commands set successfully")
+    print("📱 Waiting for messages...")
     
-    # Start keep alive server
-    keep_alive()
+
     
     # Start cleanup timer
     start_cleanup_timer()
@@ -495,8 +507,11 @@ def main():
                     message = update["message"]
                     chat_id = message["chat"]["id"]
                     text = message.get("text", "")
+                    user = message.get("from", {}).get("first_name", "User")
+                    print(f"📩 Message from {user} ({chat_id}): {text}")
                     
                     if text == "/start":
+                        print(f"🎯 Processing /start command from {chat_id}")
                         send_message(chat_id, "Hey there! 👋🎉 I'm your music buddy! 🎵✨\n\n🤖 Commands:\n/search - 🔍 Search for songs\n/single - 🎵 Download single track\n/playlist - 🎶 Download playlist\n/help - 📚 Get help\n/status - 🤖 Bot status\n/stop - ⏹️ Cancel download\n/clean - 🧹 Clean temp files\n/exit - 🚪 Exit current mode\n\n🎆 Or just send links/song names directly!")
                     elif text == "/search":
                         send_message(chat_id, "🔍 Search Mode Active!\n\nJust type the song name:\nExample: \"Blinding Lights The Weeknd\" 🎵✨\n\nUse /exit to leave this mode")
@@ -535,23 +550,27 @@ def main():
                         else:
                             send_message(chat_id, "Nothing to stop! 😊🤷♂️")
                     elif text.startswith("http"):
+                        print(f"🔗 Processing URL: {text[:50]}...")
                         # Check if user is in a specific mode
                         current_mode = user_processes.get(chat_id, None)
                         
                         if current_mode == "single_mode":
                             if is_playlist(text):
                                 send_message(chat_id, "That's a playlist! 🎶 Use /playlist mode or send a single track link 🎵")
-                                return
+                                continue
                         elif current_mode == "playlist_mode":
                             if not is_playlist(text):
                                 send_message(chat_id, "That's a single track! 🎵 Use /single mode or send a playlist link 🎶")
-                                return
+                                continue
                         
                         user_processes[chat_id] = True  # Start process
                         
                         if is_playlist(text):
                             if 'spotify.com' in text or 'music.apple.com' in text:
-                                send_message(chat_id, "Oops! 😅😬 Can't download Spotify/Apple playlists!\n\nBut hey! 🎆 Send me individual track links and I'll grab them for you! 🎵✨")
+                                send_message(chat_id, "Getting Spotify/Apple playlist tracks... 🎵")
+                                success = download_and_send_playlist(text, chat_id)
+                                if not success:
+                                    send_message(chat_id, "Couldn't get playlist tracks! Try individual songs instead! 🎵")
                             else:
                                 send_message(chat_id, "Awesome playlist! 🎉🎶 Let me grab all those bangers for you! 🔥✨")
                                 success = download_and_send_playlist(text, chat_id)
@@ -585,36 +604,57 @@ def main():
                                 send_message(chat_id, "You're in single track mode! 🎵 Send a link or use /search for song names")
                             else:
                                 send_message(chat_id, "You're in playlist mode! 🎶 Send a playlist link or use /search for song names")
-                            return
+                            continue
                         
                         if len(text.strip()) > 3:
+                            print(f"🔍 Processing search: {text}")
                             if current_mode == "search_mode":
                                 send_message(chat_id, f"Perfect! Searching for '{text}'... 🔍🎆✨")
                             user_processes[chat_id] = True  # Start process
                             send_message(chat_id, f"Searching for '{text}'... 🔍🎆✨")
                             
                             # Clear previous files
-                            for f in glob.glob("*.mp3") + glob.glob("*.m4a") + glob.glob("*.webm"):
-                                os.remove(f)
+                            for f in glob.glob("*.mp3") + glob.glob("*.m4a") + glob.glob("*.webm") + glob.glob("*.mp4"):
+                                try:
+                                    os.remove(f)
+                                except:
+                                    pass
                             
                             # Search YouTube for the song
                             youtube_search = f"ytsearch1:{text}"
+                            print(f"🔍 Searching YouTube: {youtube_search}")
                             
                             try:
                                 ydl_opts = {
-                                    'format': 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio',
+                                    'format': 'bestaudio[ext=m4a]/bestaudio',
                                     'outtmpl': '%(title)s.%(ext)s',
                                     'quiet': True,
                                     'noplaylist': True,
+                                    'postprocessors': [{
+                                        'key': 'FFmpegExtractAudio',
+                                        'preferredcodec': 'mp3',
+                                        'preferredquality': '128',
+                                    }],
+                                    'concurrent_fragment_downloads': 4,
                                 }
                                 
+                                print("📥 Starting download...")
                                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                                     ydl.download([youtube_search])
                                 
                                 # Send the downloaded file
-                                audio_files = glob.glob("*.mp3") + glob.glob("*.m4a") + glob.glob("*.webm")
+                                # Look for MP3 files first
+                                mp3_files = glob.glob("*.mp3")
+                                if mp3_files:
+                                    audio_files = mp3_files
+                                else:
+                                    audio_files = glob.glob("*.m4a") + glob.glob("*.webm") + glob.glob("*.mp4")
+                                
+                                print(f"📁 Found {len(audio_files)} files")
+                                
                                 if audio_files:
                                     file_path = audio_files[0]
+                                    print(f"📤 Sending file: {file_path}")
                                     send_message(chat_id, "Found it! 🎉🔥 Sending your jam now... 🎵✨")
                                     
                                     if send_document(chat_id, file_path):
@@ -627,7 +667,8 @@ def main():
                                     send_message(chat_id, "Couldn't find that song! 🤔😬 Try being more specific? 🎆🎵")
                                     
                             except Exception as e:
-                                send_message(chat_id, "Oops, something went wrong! 😅😬 Try a different search? 🎆✨")
+                                print(f"❌ Search error: {e}")
+                                send_message(chat_id, f"Oops, search failed: {str(e)[:50]}... Try a different search? 🎆✨")
                             
                             user_processes[chat_id] = False  # End process
                         else:
@@ -641,7 +682,7 @@ def main():
             print("\n🛑 Bot stopped")
             break
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"❌ Main loop error: {e}")
             time.sleep(5)
     
     # Cleanup

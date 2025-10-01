@@ -9,14 +9,37 @@ A user-friendly Telegram bot that downloads music from major platforms with enha
 - **User-Friendly**: Real-time status updates and clear error messages
 - **Batch Download**: Playlists are zipped for easy download
 
-## 🚀 Quick Start
+## 🚀 How to Run This Project
 
-1. **Install Dependencies:**
+### Prerequisites
+- Python 3.8 or higher
+- Telegram Bot Token (from @BotFather)
+- FFmpeg installed
+
+### Step 1: Clone and Setup
+```bash
+git clone <repository-url>
+cd "Music Downloader"
+```
+
+### Step 2: Create Virtual Environment
+```bash
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# macOS/Linux:
+source venv/bin/activate
+# Windows:
+venv\Scripts\activate
+```
+
+### Step 3: Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-2. **Install FFmpeg (Required for audio conversion):**
+### Step 4: Install FFmpeg
 ```bash
 # macOS
 brew install ffmpeg
@@ -28,12 +51,29 @@ sudo apt install ffmpeg
 # Download from https://ffmpeg.org/download.html
 ```
 
-3. **Run the Bot:**
+### Step 5: Configure Environment
+1. Copy `.env` file and add your bot token:
 ```bash
-python bot.py
+cp .env .env.local
+```
+2. Edit `.env.local` and replace `your_bot_token_here` with your actual bot token
+
+### Step 6: Run the Bot
+```bash
+# For direct bot (recommended for local development)
+python direct_bot.py
+
+# For lambda deployment
+python lambda_bot.py
 ```
 
-## 📱 How to Use
+### Getting a Bot Token
+1. Message @BotFather on Telegram
+2. Send `/newbot`
+3. Follow instructions to create your bot
+4. Copy the token to your `.env.local` file
+
+## 📱 Usage
 
 1. Start the bot with `/start`
 2. Send any music link from supported platforms
