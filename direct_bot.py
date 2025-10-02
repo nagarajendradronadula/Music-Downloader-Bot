@@ -147,11 +147,16 @@ def download_music(url):
         
         download_url = url
         
-        # If not YouTube, get track title and search YouTube
+        # If not YouTube, get track title and search YouTube using API
         if 'youtube.com' not in url and 'youtu.be' not in url:
             track_title = get_track_title_from_url(url)
             if track_title:
-                download_url = f"ytsearch1:{track_title}"
+                # Use YouTube API to get actual video URL
+                api_url = search_youtube_api(track_title)
+                if api_url:
+                    download_url = api_url
+                else:
+                    download_url = f"ytsearch1:{track_title}"
             else:
                 return None
         
@@ -171,7 +176,7 @@ def download_music(url):
                 'Accept-Language': 'en-us,en;q=0.5',
                 'Sec-Fetch-Mode': 'navigate'
             },
-            'cookiesfrombrowser': ('chrome',),
+            'geo_bypass': True,
             'extractor_args': {
                 'youtube': {
                     'skip': ['dash', 'hls'],
@@ -698,7 +703,7 @@ def main():
                                         'Accept-Language': 'en-us,en;q=0.5',
                                         'Sec-Fetch-Mode': 'navigate'
                                     },
-                                    'cookiesfrombrowser': ('chrome',),
+                                    'geo_bypass': True,
                                 }
                                 
                                 print("📥 Starting download...")
