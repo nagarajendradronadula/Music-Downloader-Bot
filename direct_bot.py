@@ -13,8 +13,33 @@ import re
 load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
+YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
 last_update_id = 0
 user_processes = {}  # Track ongoing processes per user
+
+def search_youtube_api(query, max_results=1):
+    """Search YouTube using API"""
+    try:
+        url = f"https://www.googleapis.com/youtube/v3/search"
+        params = {
+            'key': YOUTUBE_API_KEY,
+            'q': query,
+            'part': 'snippet',
+            'type': 'video',
+            'maxResults': max_results,
+            'order': 'relevance'
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        data = response.json()
+        
+        if 'items' in data and data['items']:
+            video_id = data['items'][0]['id']['videoId']
+            return f"https://www.youtube.com/watch?v={video_id}"
+        return None
+    except Exception as e:
+        print(f"YouTube API search error: {e}")
+        return None
 
 def cleanup_files():
     """Delete all downloaded files"""
@@ -140,7 +165,15 @@ def download_music(url):
                 'preferredcodec': 'mp3',
                 'preferredquality': '128',
             }],
-            'concurrent_fragment_downloads': 4,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            'extractor_args': {
+                'youtube': {
+                    'skip': ['dash', 'hls'],
+                    'player_skip': ['configs', 'webpage']
+                }
+            },
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -634,9 +667,15 @@ def main():
                                 except:
                                     pass
                             
-                            # Search YouTube for the song
-                            youtube_search = f"ytsearch1:{text}"
-                            print(f"🔍 Searching YouTube: {youtube_search}")
+                            # Search YouTube using API first, fallback to yt-dlp
+                            youtube_url = search_youtube_api(text)
+                            if youtube_url:
+                                print(f"🔍 Found via API: {youtube_url}")
+                                download_url = youtube_url
+                            else:
+                                youtube_search = f"ytsearch1:{text}"
+                                print(f"🔍 Fallback search: {youtube_search}")
+                                download_url = youtube_search
                             
                             try:
                                 ydl_opts = {
@@ -654,7 +693,7 @@ def main():
                                 
                                 print("📥 Starting download...")
                                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                                    ydl.download([youtube_search])
+                                    ydl.download([download_url])
                                 
                                 # Send the downloaded file
                                 # Look for MP3 files first
