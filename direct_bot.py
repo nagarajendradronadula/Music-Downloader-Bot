@@ -166,8 +166,12 @@ def download_music(url):
                 'preferredquality': '128',
             }],
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate'
             },
+            'cookiesfrombrowser': ('chrome',),
             'extractor_args': {
                 'youtube': {
                     'skip': ['dash', 'hls'],
@@ -688,7 +692,13 @@ def main():
                                         'preferredcodec': 'mp3',
                                         'preferredquality': '128',
                                     }],
-                                    'concurrent_fragment_downloads': 4,
+                                    'http_headers': {
+                                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                        'Accept-Language': 'en-us,en;q=0.5',
+                                        'Sec-Fetch-Mode': 'navigate'
+                                    },
+                                    'cookiesfrombrowser': ('chrome',),
                                 }
                                 
                                 print("📥 Starting download...")
