@@ -14,12 +14,13 @@ import re
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Load environment variables
+# Load environment variables (fallback for local development)
 load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
     logger.error("BOT_TOKEN not found in environment variables")
+    logger.error("Please set BOT_TOKEN in Railway dashboard or .env file")
     exit(1)
 
 YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
