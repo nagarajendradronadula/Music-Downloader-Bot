@@ -318,6 +318,22 @@ def get_track_title_from_url(url):
     
     return None
 
+def clean_youtube_url(url):
+    """Clean YouTube URL and extract video ID"""
+    try:
+        if 'youtu.be/' in url:
+            # Extract video ID from short URL
+            video_id = url.split('youtu.be/')[1].split('?')[0].split('&')[0]
+            return f"https://www.youtube.com/watch?v={video_id}"
+        elif 'youtube.com/watch' in url:
+            # Clean parameters except v
+            if 'v=' in url:
+                video_id = url.split('v=')[1].split('&')[0]
+                return f"https://www.youtube.com/watch?v={video_id}"
+        return url
+    except Exception:
+        return url
+
 def download_music(url):
     """Download single track"""
     try:
@@ -325,7 +341,10 @@ def download_music(url):
         
         download_url = url
         
-        if 'youtube.com' not in url and 'youtu.be' not in url:
+        # Clean YouTube URLs
+        if 'youtube.com' in url or 'youtu.be' in url:
+            download_url = clean_youtube_url(url)
+        elif 'youtube.com' not in url and 'youtu.be' not in url:
             track_title = get_track_title_from_url(url)
             if track_title:
                 api_url = search_youtube_api(track_title)
@@ -336,7 +355,21 @@ def download_music(url):
             else:
                 return None
         
-        with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
+        # Use simple options for direct URLs
+        simple_opts = {
+            'format': 'bestaudio/worst',
+            'outtmpl': '%(title).50s.%(ext)s',
+            'quiet': True,
+            'noplaylist': True,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'no_warnings': True
+        }
+        
+        with yt_dlp.YoutubeDL(simple_opts) as ydl:
             ydl.download([download_url])
         
         # Only return MP3 files
