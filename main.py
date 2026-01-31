@@ -27,22 +27,23 @@ YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
 last_update_id = 0
 user_processes = {}
 
-def get_ydl_opts():
+def get_ydl_opts(is_playlist=False):
     """Get optimized yt-dlp options for highest quality"""
     return {
-        'format': 'worst[ext=mp4]/worst',
-        'outtmpl': '%(title).50s.%(ext)s',
+        'format': 'bestaudio[ext=m4a]/bestaudio/best',
+        'outtmpl': '%(title).100s.%(ext)s',
         'quiet': True,
-        'noplaylist': True,
+        'noplaylist': not is_playlist,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
-            'preferredquality': '320',
+            'preferredquality': '192',
         }],
-        'retries': 5,
-        'fragment_retries': 5,
+        'retries': 3,
+        'fragment_retries': 3,
         'no_warnings': True,
-        'ignoreerrors': False
+        'ignoreerrors': True,
+        'extract_flat': False
     }
 
 def search_youtube_api(query, max_results=1):
@@ -107,23 +108,21 @@ def start_cleanup_timer():
     cleanup_thread.start()
 
 def is_playlist(url):
-    """Check if URL is a playlist"""
+    """Check if URL is a YouTube playlist"""
     try:
-        if 'youtube.com' in url:
-            return 'playlist' in url or 'list=' in url
-        elif 'spotify.com' in url:
-            return '/playlist/' in url or '/album/' in url
-        elif 'music.apple.com' in url:
-            return '/playlist/' in url or ('/album/' in url and '?i=' not in url)
-        return False
+        return ('youtube.com' in url or 'youtu.be' in url) and ('playlist' in url or 'list=' in url or '/channel/' in url or '/user/' in url)
     except Exception as e:
         logger.error(f"Error checking if URL is playlist: {e}")
         return False
 
-def extract_spotify_playlist(url):
-    """Extract track names from Spotify playlist/album"""
+
+
+def process_youtube_playlist(url, chat_id):
+    """Process YouTube playlist directly"""
     try:
-        # Try yt-dlp first
+        user_processes[chat_id] = True
+        
+        # Extract playlist info
         ydl_opts = {
             'quiet': True,
             'extract_flat': True,
@@ -133,190 +132,98 @@ def extract_spotify_playlist(url):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            tracks = []
-            if 'entries' in info:
-                for entry in info['entries']:
-                    if entry and entry.get('title'):
-                        title = entry['title']
-                        artist = entry.get('uploader', '') or entry.get('artist', '')
-                        if artist and artist not in title:
-                            tracks.append(f"{artist} {title}")
-                        else:
-                            tracks.append(title)
-            else:
-                # Single track
-                title = info.get('title', '')
-                artist = info.get('uploader', '') or info.get('artist', '')
-                if title:
-                    if artist and artist not in title:
-                        tracks.append(f"{artist} {title}")
-                    else:
-                        tracks.append(title)
+            if 'entries' not in info:
+                send_message(chat_id, "No tracks found in playlist.")
+                return
             
-            return tracks[:20]  # Limit to 20 tracks
+            entries = [entry for entry in info['entries'] if entry]
+            total_tracks = len(entries)
             
-    except Exception as e:
-        logger.error(f"Spotify extraction error: {e}")
-        
-        # Fallback: try web scraping
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            response = requests.get(url, headers=headers, timeout=15)
-            response.raise_for_status()
+            if total_tracks == 0:
+                send_message(chat_id, "Empty playlist.")
+                return
             
-            # Extract from page title as fallback
-            title_match = re.search(r'<title>([^<]+)</title>', response.text)
-            if title_match:
-                title = title_match.group(1).replace(' | Spotify', '').strip()
-                return [title] if title else []
-                
-        except Exception as fallback_error:
-            logger.error(f"Fallback extraction failed: {fallback_error}")
-        
-        return []
-
-def process_playlist(url, chat_id):
-    """Process playlist and send tracks one by one"""
-    try:
-        user_processes[chat_id] = True
-        
-        if 'spotify.com' in url:
-            tracks = extract_spotify_playlist(url)
-        else:
-            # YouTube playlist handling
-            try:
-                ydl_opts = {'quiet': True, 'extract_flat': True}
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    tracks = [entry.get('title', '') for entry in info.get('entries', []) if entry]
-                    tracks = tracks[:20]  # Limit to 20
-            except Exception:
-                tracks = []
-        
-        if not tracks:
-            send_message(chat_id, "Couldn't extract playlist tracks. Try individual songs.")
-            return
-        
-        send_message(chat_id, f"Found {len(tracks)} tracks! Downloading and sending... 🎵")
-        
-        sent_count = 0
-        for i, track in enumerate(tracks, 1):
-            try:
-                send_message(chat_id, f"[{i}/{len(tracks)}] Searching: {track[:40]}...")
-                
-                cleanup_files()
-                
-                # Search and download
-                youtube_url = search_youtube_api(track)
-                download_url = youtube_url if youtube_url else f"ytsearch1:{track}"
-                
-                with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
-                    ydl.download([download_url])
-                
-                mp3_files = glob.glob("*.mp3")
-                if mp3_files:
-                    file_path = mp3_files[0]
-                    if send_document(chat_id, file_path):
-                        sent_count += 1
-                        send_message(chat_id, f"✅ [{i}/{len(tracks)}] Sent!")
-                    else:
-                        send_message(chat_id, f"❌ [{i}/{len(tracks)}] Send failed")
+            # Limit playlist size
+            max_tracks = 50
+            if total_tracks > max_tracks:
+                entries = entries[:max_tracks]
+                send_message(chat_id, f"Playlist has {total_tracks} tracks. Downloading first {max_tracks}...")
+            
+            send_message(chat_id, f"📋 Found {len(entries)} tracks! Starting download... 🎵")
+            
+            sent_count = 0
+            failed_count = 0
+            
+            for i, entry in enumerate(entries, 1):
+                try:
+                    if not entry or not entry.get('id'):
+                        failed_count += 1
+                        continue
                     
-                    try:
-                        os.remove(file_path)
-                    except OSError:
-                        pass
-                else:
-                    send_message(chat_id, f"❌ [{i}/{len(tracks)}] Download failed")
-                
-                time.sleep(1)  # Rate limiting
-                
-            except Exception as track_error:
-                logger.error(f"Track {i} error: {track_error}")
-                send_message(chat_id, f"❌ [{i}/{len(tracks)}] Error")
-                continue
-        
-        send_message(chat_id, f"🎉 Playlist complete! Sent {sent_count}/{len(tracks)} tracks.")
+                    video_url = f"https://www.youtube.com/watch?v={entry['id']}"
+                    title = entry.get('title', f'Track {i}')[:40]
+                    
+                    send_message(chat_id, f"[{i}/{len(entries)}] {title}...")
+                    
+                    cleanup_files()
+                    
+                    # Download individual track
+                    with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
+                        ydl.download([video_url])
+                    
+                    mp3_files = glob.glob("*.mp3")
+                    if mp3_files:
+                        file_path = mp3_files[0]
+                        if send_document(chat_id, file_path):
+                            sent_count += 1
+                            send_message(chat_id, f"✅ [{i}/{len(entries)}] Sent!")
+                        else:
+                            send_message(chat_id, f"❌ [{i}/{len(entries)}] Send failed")
+                            failed_count += 1
+                        
+                        try:
+                            os.remove(file_path)
+                        except OSError:
+                            pass
+                    else:
+                        send_message(chat_id, f"❌ [{i}/{len(entries)}] Download failed")
+                        failed_count += 1
+                    
+                    time.sleep(1)  # Rate limiting
+                    
+                except Exception as track_error:
+                    logger.error(f"Track {i} error: {track_error}")
+                    send_message(chat_id, f"❌ [{i}/{len(entries)}] Error")
+                    failed_count += 1
+                    continue
+            
+            send_message(chat_id, f"🎉 Playlist complete!\n✅ Sent: {sent_count}\n❌ Failed: {failed_count}")
         
     except Exception as e:
-        logger.error(f"Playlist processing error: {e}")
-        send_message(chat_id, "Playlist processing failed. Try again later.")
+        logger.error(f"YouTube playlist processing error: {e}")
+        send_message(chat_id, "YouTube playlist processing failed. Try again later.")
     finally:
         user_processes[chat_id] = False
 
+def process_playlist(url, chat_id):
+    """Process YouTube playlist"""
+    if 'youtube.com' in url or 'youtu.be' in url:
+        process_youtube_playlist(url, chat_id)
+    else:
+        send_message(chat_id, "Only YouTube playlists are supported.")
+
 def get_track_title_from_url(url):
-    """Extract track title from URL structure with improved methods"""
+    """Extract track title from YouTube URL"""
     try:
-        # Try yt-dlp first for all platforms
-        try:
-            ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': False}
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                title = info.get('title', '')
-                artist = info.get('artist', '') or info.get('uploader', '') or info.get('channel', '')
-                
-                if title:
-                    # Clean up title
-                    title = re.sub(r'\[.*?\]|\(.*?\)', '', title).strip()
-                    if artist and artist.lower() not in title.lower():
-                        return f"{artist} {title}"
-                    return title
-        except Exception:
-            pass
-        
-        # Fallback methods for specific platforms
-        if 'music.apple.com' in url:
-            match = re.search(r'/(?:album|song)/([^/]+)', url)
-            if match:
-                title = requests.utils.unquote(match.group(1))
-                title = title.replace('-', ' ').replace('_', ' ')
-                title = re.sub(r'\s+\d+$', '', title)
-                return title.strip() if len(title.strip()) > 3 else None
-        
-        elif 'spotify.com' in url:
-            try:
-                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                response = requests.get(url, headers=headers, timeout=10)
-                response.raise_for_status()
-                
-                # Multiple patterns for Spotify
-                patterns = [
-                    r'<title>([^<]+?) - song and lyrics by ([^<]+?) \| Spotify</title>',
-                    r'<title>([^<]+?) \| Spotify</title>',
-                    r'"name":"([^"]+)".*?"artists":\[{"name":"([^"]+)"'
-                ]
-                
-                for pattern in patterns:
-                    match = re.search(pattern, response.text)
-                    if match:
-                        if len(match.groups()) == 2:
-                            return f"{match.group(2)} {match.group(1)}"
-                        else:
-                            title = match.group(1).replace(' | Spotify', '').strip()
-                            return title if len(title) > 3 else None
-            except requests.RequestException as e:
-                logger.error(f"Error fetching Spotify page: {e}")
-        
-        # Generic page title extraction
-        else:
-            try:
-                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                response = requests.get(url, headers=headers, timeout=10)
-                response.raise_for_status()
-                title_match = re.search(r'<title>([^<]+)</title>', response.text)
-                if title_match:
-                    title = title_match.group(1).strip()
-                    # Clean common suffixes
-                    title = re.sub(r' - YouTube$| \| YouTube$', '', title)
-                    return title if len(title) > 3 else None
-            except requests.RequestException as e:
-                logger.error(f"Error fetching page title: {e}")
-                
+        ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': False}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            title = info.get('title', '')
+            if title:
+                title = re.sub(r'\[.*?\]|\(.*?\)', '', title).strip()
+                return title
     except Exception as e:
         logger.error(f"Title extraction error: {e}")
-    
     return None
 
 def clean_youtube_url(url):
@@ -335,45 +242,47 @@ def clean_youtube_url(url):
     except Exception:
         return url
 
-def download_music(url):
-    """Download single track"""
+def download_youtube_video(url):
+    """Download single YouTube video"""
     try:
         cleanup_files()
         
-        download_url = url
+        # Clean and validate YouTube URL
+        clean_url = clean_youtube_url(url)
         
-        # Clean YouTube URLs
+        # Download with optimized settings
+        opts = get_ydl_opts()
+        
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([clean_url])
+        
+        mp3_files = glob.glob("*.mp3")
+        return mp3_files[0] if mp3_files else None
+        
+    except Exception as e:
+        logger.error(f"YouTube download error: {e}")
+        return None
+
+def download_music(url):
+    """Download single track from YouTube"""
+    try:
+        cleanup_files()
+        
+        # Handle YouTube URLs directly
         if 'youtube.com' in url or 'youtu.be' in url:
-            download_url = clean_youtube_url(url)
-        elif 'youtube.com' not in url and 'youtu.be' not in url:
+            return download_youtube_video(url)
+        else:
+            # For non-YouTube URLs, search on YouTube
             track_title = get_track_title_from_url(url)
             if track_title:
                 api_url = search_youtube_api(track_title)
-                if api_url:
-                    download_url = api_url
-                else:
-                    download_url = f"ytsearch1:{track_title}"
+                download_url = api_url if api_url else f"ytsearch1:{track_title}"
             else:
                 return None
         
-        # Use simple options for direct URLs
-        simple_opts = {
-            'format': 'bestaudio/worst',
-            'outtmpl': '%(title).50s.%(ext)s',
-            'quiet': True,
-            'noplaylist': True,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'no_warnings': True
-        }
-        
-        with yt_dlp.YoutubeDL(simple_opts) as ydl:
+        with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
             ydl.download([download_url])
         
-        # Only return MP3 files
         mp3_files = glob.glob("*.mp3")
         return mp3_files[0] if mp3_files else None
         
@@ -521,60 +430,20 @@ def process_search_query(query, chat_id):
         user_processes[chat_id] = True
         cleanup_files()
         
-        # Try multiple search strategies
-        search_queries = [
-            query,
-            f"{query} official audio",
-            f"{query} music"
-        ]
-        
-        download_url = None
-        
         # Try YouTube API first
         youtube_url = search_youtube_api(query)
         if youtube_url:
             logger.info(f"Found via API: {youtube_url}")
             download_url = youtube_url
         else:
-            # Try yt-dlp search with better matching
-            for search_query in search_queries:
-                try:
-                    search_opts = {'quiet': True, 'extract_flat': True}
-                    with yt_dlp.YoutubeDL(search_opts) as ydl:
-                        search_results = ydl.extract_info(f"ytsearch5:{search_query}", download=False)
-                        
-                        best_match = find_best_match(query, search_results)
-                        if best_match:
-                            download_url = best_match.get('url') or best_match.get('webpage_url')
-                            logger.info(f"Best match: {best_match.get('title', 'Unknown')}")
-                            break
-                except Exception as e:
-                    logger.error(f"Search attempt failed: {e}")
-                    continue
-            
-            # Final fallback
-            if not download_url:
-                download_url = f"ytsearch1:{query}"
+            # Use yt-dlp search as fallback
+            download_url = f"ytsearch1:{query}"
         
         logger.info("Starting download...")
         
-        # Try simple search first
         try:
-            simple_opts = {
-                'format': 'bestaudio/worst',
-                'outtmpl': '%(title).50s.%(ext)s',
-                'quiet': True,
-                'noplaylist': True,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-                'no_warnings': True
-            }
-            
-            with yt_dlp.YoutubeDL(simple_opts) as ydl:
-                ydl.download([f"ytsearch1:{query}"])
+            with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
+                ydl.download([download_url])
             
             mp3_files = glob.glob("*.mp3")
             if mp3_files:
@@ -654,23 +523,23 @@ def main():
                     
                     if text == "/start":
                         send_message(chat_id, 
-                            "Hey there! 👋 I'm your music buddy! 🎵\n\n"
+                            "Hey there! 👋 I'm your YouTube music downloader! 🎵\n\n"
                             "🎯 Commands:\n"
                             "/help - 📚 Get help\n"
                             "/status - 🤖 Bot status\n"
                             "/clean - 🧹 Clean temp files\n\n"
-                            "🎆 Send me music links or song names to download!")
+                            "🎆 Send me YouTube links or song names to download!")
                     
                     elif text == "/help":
                         send_message(chat_id,
                             "🎆 How to use me:\n\n"
-                            "🔗 Send music links from:\n"
-                            "• YouTube\n"
-                            "• Spotify\n"
-                            "• Apple Music\n\n"
+                            "🔗 Send YouTube links:\n"
+                            "• Single videos\n"
+                            "• Playlists\n"
+                            "• Channels\n\n"
                             "🔍 Or just send song names like:\n"
                             "\"Blinding Lights The Weeknd\"\n\n"
-                            "I'll find and download it for you! 🎵")
+                            "I'll search YouTube and download it for you! 🎵")
                     
                     elif text == "/status":
                         active_downloads = len([p for p in user_processes.values() if p])
@@ -687,6 +556,12 @@ def main():
                     
                     elif text.startswith("http"):
                         logger.info(f"Processing URL: {text[:50]}...")
+                        
+                        # Only support YouTube URLs
+                        if not ('youtube.com' in text or 'youtu.be' in text):
+                            send_message(chat_id, "Only YouTube links are supported! 🔴")
+                            continue
+                        
                         user_processes[chat_id] = True
                         
                         if is_playlist(text):
